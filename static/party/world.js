@@ -84,4 +84,18 @@ return [
       },
     ],
   },
+  {
+    enabled: false,
+    id: 'example',
+    placement: {
+      position: [0, 1, 0],
+    },
+    scene: [
+      {
+        type: 'example',
+        params: {
+        }
+      },
+    ],
+  },
 ];
