@@ -85,6 +85,17 @@ return [
     ],
   },
   {
+    id: 'vj',
+    placement: {
+      position: [250, 0, -50.],
+      scale: [-7, 7, 7],
+      rotation: [0, -0.0, 0],
+    },
+    scene: [
+      { type: 'vj', },
+    ],
+  },
+  {
     enabled: false,
     id: 'example',
     placement: {

@@ -376,6 +376,15 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
   let musicGain = listener.context.createGain();
   musicGain.connect(musicAnalyser);
 
+  let vjEl = document.createElement('video');
+  vjEl.muted = true;
+  vjEl.playsInline = true;
+  vjEl.autoplay = true;
+
+  let vjTex = new THREE.VideoTexture(vjEl);
+  vjTex.wrapS = THREE.RepeatWrapping;
+  vjTex.wrapT = THREE.RepeatWrapping;
+
   Service.get('music', music => {
     musicGain.connect(music.musicGain);
   });
@@ -383,7 +392,7 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
 
   let worldGlobals = {
     config, scene, listener, renderer, gestureWrangler, guests, ac: listener.context,
-    freqTex,
+    vjEl, vjTex, freqTex, freqData
   };
   let world = new World('world.js', worldGlobals);
   scene.add(world.group);
@@ -634,6 +643,33 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
   };
 
   const specialGuestRoles = {
+    vj: (id, remoteGuest) => {
+      let source = new MediaStream();
+
+      return {
+        destroy() {
+          if (vjEl.srcObject == source) {
+            vjEl.srcObject = null;
+          }
+        },
+        set videoTrack(newVideoTrack) {
+          console.log('vj track time', newVideoTrack);
+          let foundTrack = false;
+          for (const track of source.getTracks()) {
+            if (track == newVideoTrack)
+              foundTrack = true;
+            else
+              source.removeTrack(track);
+          }
+          if (!foundTrack)
+            source.addTrack(newVideoTrack);
+          if (vjEl.srcObject != source) {
+            vjEl.srcObject = source;
+            vjEl.play();
+          }
+        },
+      };
+    },
     dj: (id, remoteGuest) => {
       let source;
 
@@ -655,13 +691,7 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
     },
   };
 
-  let projectorId = null;
-
   const updateGuest = (id, remoteGuest) => {
-    if (remoteGuest.state.role == 'cast') {
-      projectorId = id;
-      return;
-    }
     const guest = getOrCreateGuest(id, remoteGuest);
     if (guest.group) {
       const { state } = remoteGuest;
@@ -675,10 +705,6 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
   }
 
   const updateMedia = (id, { videoTrack, audioTrack }) => {
-    if (id == projectorId) {
-      projector.setStream(new MediaStream([videoTrack, audioTrack].filter(t => t)));
-      return;
-    }
     const guest = guests[id];
     if (!guest) {
       return;
@@ -723,72 +749,6 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
   }
 
   const byteFreqData = new Uint8Array(1024);
-
-  const createProjector = (size) => {
-    const group = new THREE.Group();
-    const mesh = new THREE.Mesh(new THREE.PlaneBufferGeometry(size * (16/9), size));
-    mesh.position.y = size/2;
-    group.add(mesh);
-
-    const light = new THREE.PointLight(0xffffff, 100, size + 30);
-    light.position.z = 30;
-    light.position.y = size/2;
-    group.add(light);
-      
-    const posSound = new THREE.PositionalAudio(listener);
-    posSound.setRefDistance(50);
-    posSound.setRolloffFactor(1.5);
-    posSound.setDistanceModel('exponential');
-    posSound.setDirectionalCone(120, 230, 0.2);
-    posSound.rotation.y = Math.PI;
-    mesh.add(posSound);
-
-    const videoEl = document.createElement('video');
-    videoEl.playsInline = true;
-    videoEl.muted = true;
-    posSound.setMediaElementSource(videoEl);
-
-    videoEl.addEventListener('resize', e => {
-      mesh.geometry = new THREE.PlaneBufferGeometry(size * videoEl.videoWidth / videoEl.videoHeight, size);
-      mesh.position.y = size / 2;
-    });
-
-    const videoTexture = new THREE.VideoTexture(videoEl);
-    videoTexture.minFilter = THREE.LinearFilter;
-    videoTexture.magFilter = THREE.LinearFilter;
-    videoTexture.format = THREE.RGBFormat;
-    // videoTexture.offset.set(-0.25, 0);
-    mesh.material = new THREE.MeshBasicMaterial({
-      color:0xffffff,
-      side: THREE.DoubleSide,
-      map: videoTexture,
-    });
-    // videoEl.addEventListener('playing', () => {
-    //   videoPanel.material.uniforms.aspect.value = videoEl.videoWidth / videoEl.videoHeight;
-    //   head.add(videoPanel);
-    // });
-    // videoEl.addEventListener('paused', () => {
-    //   head.remove(videoPanel);
-    // });
-
-    // scene.add(group);
-    return {
-      group,
-      setStream: stream => {
-        videoEl.srcObject = stream;
-        gestureWrangler.playVideo(videoEl);
-        if (stream.getAudioTracks().length) {
-          posSound.setMediaStreamSource(stream);
-          posSound.source.connect(musicAnalyser);
-        }
-      }
-    };
-  };
-
-  let projector = createProjector(40);
-  projector.group.position.z = -75;
-  projector.group.position.x = -180;
-  projector.group.rotation.y = Math.PI / 2;
 
   const draw = ({ now, look, position }) => {
     camera.position.x = position[0];
