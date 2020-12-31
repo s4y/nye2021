@@ -25,13 +25,12 @@ return [
   },
   {
     id: 'bar',
+    placement: {
+      position: [50, 0, 100],
+    },
     scene: [
       {
-        type: 'gltf',
-        placement: {
-          position: [50, 0, 100],
-          scale: [8, 8, 8],
-        },
+        type: 'bar',
         params: {
           url: '/assets/bar.glb',
         }

@@ -653,7 +653,6 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
           }
         },
         set videoTrack(newVideoTrack) {
-          console.log('vj track time', newVideoTrack);
           let foundTrack = false;
           for (const track of source.getTracks()) {
             if (track == newVideoTrack)

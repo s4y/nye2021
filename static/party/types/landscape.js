@@ -4,11 +4,18 @@ import { SubdivisionModifier } from '/deps/SubdivisionModifier.js';
 import Service from '/space/js/Service.js'
 
 const shaderCommon = `
+  #define PHONG
+
+  uniform vec3 diffuse;
+  uniform vec3 emissive;
+  uniform vec3 specular;
+  uniform float shininess;
+  uniform float opacity;
+
   uniform float ripple;
   uniform float t;
   uniform sampler2D map;
   uniform sampler2D sf_t;
-  uniform vec3 color;
   uniform vec3 ripplePosition;
   uniform float rippleAmt;
   uniform float glowAmt;
@@ -73,24 +80,55 @@ const shaderCommon = `
 
 const materialProto =  new THREE.ShaderMaterial( {
   uniforms: {
+    ...THREE.UniformsLib.common,
+    ...THREE.UniformsLib.lights,
+
     t: { value: 0 },
-    color: { value: new THREE.Color(1, 0, 0) },
+    emissive: { value: new THREE.Color(0, 0, 0) },
     map: { type: 't', },
     sf_t: { type: 't' },
     glowAmt: { value: 0, },
     gridAmt: { value: 0.1, },
-    houseLightsAmt: { value: 1.0, },
-    accentLightsAmt: { value: 1, },
+    houseLightsAmt: { value: 0, },
+    accentLightsAmt: { value: 0, },
     ripplePosition: { value: new THREE.Vector3(), },
     rippleAmt: { value: 0, },
+    shininess: { value: 200, },
+    specular: { value: new THREE.Color(0x000000) },
+    emissive: { value: new THREE.Color(0x000000) },
+    diffuse: { value: new THREE.Color(0x555555) },
   },
+  lights: true,
   extensions: {
    derivatives: true,
   },
   vertexShader: `
     ${shaderCommon}
 
+    varying vec3 vViewPosition;
+    #ifndef FLAT_SHADED
+      varying vec3 vNormal;
+    #endif
+
     void main() {
+      #include <beginnormal_vertex>
+      #include <morphnormal_vertex>
+      #include <skinbase_vertex>
+      #include <skinnormal_vertex>
+      #include <defaultnormal_vertex>
+
+      #ifndef FLAT_SHADED // Normal computed with derivatives when FLAT_SHADED
+        vNormal = normalize( transformedNormal );
+      #endif
+
+      #include <begin_vertex>
+      #include <project_vertex>
+      vViewPosition = - mvPosition.xyz;
+      #include <worldpos_vertex>
+      #include <envmap_vertex>
+      #include <shadowmap_vertex>
+      #include <fog_vertex>
+
       pp = (modelMatrix * vec4(position, 1.)).xyz - cameraPosition;
       norm = normal;
       vUv = uv;
@@ -101,11 +139,17 @@ const materialProto =  new THREE.ShaderMaterial( {
 
       mp = (modelMatrix * vec4(position, 1.)).xyz;
       gl_Position.y += rippleMag(rippleDist());
+
     }
   `,
 
   fragmentShader: `
     ${shaderCommon}
+
+    #include <bsdfs>
+    #include <lights_pars_begin>
+    #include <lights_phong_pars_fragment>
+    #include <specularmap_pars_fragment>
 
     vec4 bg(vec3 p) {
       // return vec4(pow(dot(norm, -normalize(p)), 10.));
@@ -115,8 +159,11 @@ const materialProto =  new THREE.ShaderMaterial( {
     }
 
     vec4 textex(vec3 p) {
-      vec4 c = texture2D(map, reflection.xz*.01);
-      c *= dot(norm, -normalize(p));
+      float xpos = atan(p.z, p.x) / PI / 1.;
+      vec4 c = texture2D(map, vec2(xpos, p.y / 1000. - 0.125) + 0.5);
+      // c *= clamp(abs(xpos), 0., 1.);
+      c *= clamp(p.y / 100., 0., 1.);
+      // c *= dot(norm, -normalize(p));
       return c;
     }
 
@@ -138,19 +185,39 @@ const materialProto =  new THREE.ShaderMaterial( {
       // float yeet = clamp(sin(dot(normalize(nnorm), vec3(0, 0, 1)) * 10. - t), 0., 1.);
       // gl_FragColor = addHsv(gl_FragColor, vec3((yeet/2.+.5) * 0.4, 0., 0.));
       // gl_FragColor += bg(pp);
-      // gl_FragColor += textex(pp) * 0.5;
+      gl_FragColor += textex(mp) * 0.5;
       // vec2 yoov = mod(vUv, vec2(1));
       vec2 yeet2 = mod(vUv*1.+vec2(0.37, 0.), 1.);
       float freq = sf(((sin((yeet2.y+yeet2.x)*PI*1.))/2.+.5)/4.);
       // freq = 0.;
-      gl_FragColor += hsv(0.8 + t * 0.001 + freq * 0.8, 1., 1.) * pow(max(yeet2.x, yeet2.y), 50. - 50. * freq) * glowAmt;
+      gl_FragColor += hsv(0.8 + t * 0.001 + freq * 0.8, 1., 1.) * pow(max(yeet2.x, yeet2.y), 50. - 20. * freq) * glowAmt;
 
       vec3 grid = abs(fract(vert * 5. - 0.5) - 0.5) / fwidth(vert * 5.);
       float line = min(min(grid.x, grid.y), grid.z);
       gl_FragColor += vec4(clamp(1.-line, 0., 1.)) * gridAmt;
 
+      vec4 diffuseColor = vec4( diffuse, opacity );
+      ReflectedLight reflectedLight = ReflectedLight( vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ) );
+      vec3 totalEmissiveRadiance = emissive;
 
-      // gl_FragColor = vec4(mod(vert/2., 1.), 1.);
+      #include <specularmap_fragment>
+      #include <normal_fragment_begin>
+      #include <normal_fragment_maps>
+
+      #include <lights_phong_fragment>
+      #include <lights_fragment_begin>
+      #include <lights_fragment_maps>
+      #include <lights_fragment_end>
+
+      vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + reflectedLight.directSpecular + reflectedLight.indirectSpecular + totalEmissiveRadiance;
+      #include <envmap_fragment>
+      gl_FragColor += vec4( outgoingLight, diffuseColor.a );
+
+    #include <tonemapping_fragment>
+    #include <encodings_fragment>
+    #include <fog_fragment>
+    #include <premultiplied_alpha_fragment>
+    #include <dithering_fragment>
     }
   `,
 });
@@ -158,20 +225,17 @@ const materialProto =  new THREE.ShaderMaterial( {
 export default class GLTF {
   constructor(params, globals) {
     this.params = params;
+    this.globals = globals;
     this.group = new THREE.Group();
   }
-  async load(params, globals) {
+  async load(params, globals, world) {
     const gltf = this.gltf = await new Promise((resolve, reject) => {
       new GLTFLoader().load('/assets/cubezone.glb', resolve, null, reject);
     });
 
-    const material = this.material = /*new THREE.MeshLambertMaterial({
-      color: 0x111111,
-    });//*/materialProto.clone();
-    material.uniforms.color.value.setRGB(0.1, 0.1, 0.1);
+    const material = this.material = materialProto.clone();
     material.uniforms.ripplePosition.value.set(...params.cubePosition);
     gltf.scene.scale.setScalar(50);
-    // gltf.scene.position.y -= 100;
     gltf.scene.traverse((o) => {
       if (params.armedForDrop && o.name == 'Cube') o.geometry = (() => {
         let geo = new THREE.Geometry().fromBufferGeometry(o.geometry);
@@ -185,33 +249,31 @@ export default class GLTF {
     });
     this.group.add(gltf.scene);
 
-    // const videoEl = this.videoEl = document.createElement('video');
-    // videoEl.playsInline = true;
-    // videoEl.loop = true;
-    // videoEl.muted = true;
-    // videoEl.src = '/assets/HakobuNe%20-%20VERITAS%20feat.KAREN%20%28%E3%82%AB%E3%83%AC%E3%83%B3%29%20%E3%80%80%27Prod%20by%20HakobuNe%27-m9mK-EtTACM.mp4';
-    // videoEl.play();
+    material.uniforms.sf_t.value = globals.freqTex;
+    material.uniforms.map.value = globals.vjTex;
 
-    // const videoTexture = new THREE.VideoTexture(videoEl);
-    // videoTexture.wrapS = THREE.RepeatWrapping;
-    // videoTexture.wrapT = THREE.RepeatWrapping;
-    // this.videoTexture = videoTexture;
-    // material.uniforms.map.value = videoTexture;
-    //
-  material.uniforms.sf_t.value = globals.freqTex;
+    const light = new THREE.PointLight(0xffffff, 200);
+    light.position.set(-350, 300, -200);
+    this.group.add(light);
 
-  const light = new THREE.PointLight(0xffffff, 10);
-  light.position.set(10, 200, 0);
-  this.group.add(light);
+    // const marker = new THREE.Mesh(
+    //   new THREE.BoxBufferGeometry(1, 1, 1),
+    //   new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    // light.add(marker);
   }
   now() {
     return (Date.now()/1000) % (1 << 15) - (1 << 14);
   }
   update() {
+    const now = this.now();
     if (!this.material)
       return;
-    this.material.uniforms.t.value = (+new Date() / 1000) % 10000;
-    // this.material.uniforms.rippleAmt.value = Math.pow(1.-(Math.sin(this.now())/2.+.5), 10.);
+    this.material.uniforms.t.value = now;
+    if (this.cubelight) {
+      this.cubelight.rotation.y += 0.005;
+      this.cubelight.rotation.x += 0.004;
+      this.cubelight.material.emissive.setHSL(0.15, .9, .8 - Math.pow(this.globals.freqData[1] / 255, 4.) * 0.5);
+    }
   }
   // destroy() {
   //   this.videoEl.src = "";

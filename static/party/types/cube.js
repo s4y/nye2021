@@ -3,6 +3,7 @@ import * as THREE from '/deps/three/build/three.module.js'
 export default class CubeV4 {
   constructor(params, globals) {
     this.group = new THREE.Group();
+    this.globals = globals;
 
     this.spinnyV = 0;
     this.spinny = 0;
@@ -282,7 +283,7 @@ export default class CubeV4 {
       }));
     this.group.add(this.mesh);
 
-    const light = new THREE.PointLight(0x0400ff, 10);
+    const light = new THREE.PointLight(0xff00ff, 10);
     this.light = light;
     light.position.y += 10.;
     this.mesh.add(light);
@@ -299,15 +300,25 @@ export default class CubeV4 {
     return (Date.now()/1000) % (1 << 15) - (1 << 14);
   }
   update(camera, renderer) {
+    const dropDuration = 10;
+    const dropTime = +new Date() / 1000 % dropDuration;
+    const dropAmt = dropTime / dropDuration;
 
-    this.mesh.position.y = 50;//50 + (Math.pow((Math.sin(this.now())/2.+.5), 10.)) * 100.;
+    const ai = x => Math.pow(x, 10);
+    const sinc = (x, k) => {
+      const a = Math.PI*(k*x-1.0);
+        return Math.sin(a)/a;
+    };
+    const fallAmt = 1;//(Math.cos((1.-Math.pow(1-dropAmt, 4.)) * Math.PI * 4)+0.2) * Math.pow(1-dropAmt, 4.);
+
+    this.mesh.position.y = 55;//500 * fallAmt + 50;//50 + (Math.pow((Math.sin(this.now())/2.+.5), 10.)) * 100.;
     // this.mesh.scale.y = 0.5 + 0.5 * (1.-Math.pow(1.-(Math.sin(this.now())/2.+.5), 10.));
 
     // this.analyser.getByteFrequencyData(this.freqData);
-    // this.light.intensity = this.freqData[0] * 10;
+    this.light.intensity = Math.pow(Math.min(this.globals.freqData[0] / 127, 1.), 10.) * 10;
 
     this.spinnyV *= 0.5;
-    // this.spinnyV += Math.pow(this.freqData[1] / 255, 2) / 30;
+    this.spinnyV += Math.pow(this.globals.freqData[1] / 255, 2) / 30;
     this.spinny += this.spinnyV;
     this.spinny += 0.001;
     this.mesh.material.uniforms.spinny.value = this.spinny;
