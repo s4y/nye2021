@@ -80,14 +80,13 @@ uniform float u_vol;
 uniform sampler2D u_feed;
 #define PI 3.14159265
 #define TAU (2*PI)
-#define PHI (sqrt(5)*0.5 + 0.5)
+
+#define PHI ((pow(float(5),0.5))*0.5 + 0.5)
 // Define some constants
 const int steps = 16; // This is the maximum amount a ray can march.
 const float smallNumber = 0.001;
 const float maxDist = 100.; // This is the maximum distance a ray can travel.
- float sqrt(int s){
-    return pow(float(s),0.5);
-}
+
 
 
 vec3 rotateQuat( vec4 quat, vec3 vec )
@@ -118,7 +117,7 @@ float fBlob(vec3 p) {
         dot(p.yx, normalize(vec2(1., PHI)))),
         dot(p.xz, normalize(vec2(1., PHI))));
     float l = length(p) ;
-  return l - 1.5 - 0.2 * (1.5 / 2.0) * cos(min(sqrt(1.01 - b / l)*(PI / 0.25), PI));
+  return l - 1.5 - 0.2 * (1.5 / 2.0) * cos(min(pow(float((1.01 - b / l)),0.5)*(PI / 0.25), PI));
 }
 
 // Repeat in three dimensions
