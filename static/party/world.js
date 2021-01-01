@@ -93,6 +93,21 @@ return [
     scene: [
       { type: 'vj', },
     ],
+  },    
+  {
+  
+    id: 'moreSky',
+    placement: {
+      position: [0, -1000,0],
+      scale: [1000, 1500, 1000],
+    },
+    scene: [
+      {
+        type: 'moreSky',
+        params: {
+        }
+      },
+    ],
   },
   {
     enabled: false,
