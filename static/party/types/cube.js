@@ -21,6 +21,8 @@ export default class CubeV4 {
           sf_t: { value: globals.freqTex, },
           viewport: { value: new THREE.Vector4(), },
           rotation: { value: new THREE.Matrix4() },
+          intensity: { value: 0 },
+          drop: { value: 0 },
         },
         vertexShader: `
         varying vec3 pp;
@@ -34,6 +36,8 @@ export default class CubeV4 {
           uniform vec4 viewport;
           uniform float t;
           uniform float spinny;
+          uniform float drop;
+          uniform float intensity;
           uniform mat4 modelViewMatrix;
           uniform mat4 projectionMatrix;
           uniform mat4 rotation;
@@ -277,11 +281,67 @@ export default class CubeV4 {
             vec3 norm = estimateNormal(hitP);
 
             gl_FragColor = colorAt(norm, hit.boxP, hitP, ray) * step(surfaceDist, kEpsilon);
+            gl_FragColor = mix(gl_FragColor, vec4(1), pow(mod(1.-t / 5., 1.), 10.) * intensity);
             // gl_FragColor += 0.4;
           }
               `,
       }));
     this.group.add(this.mesh);
+
+    this.bgMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry( 2000, 2000 ),
+      new THREE.ShaderMaterial( {
+        transparent: true,
+        depthWrite: false,
+        uniforms: {
+          t: { value: 0, },
+          spinny: { value: 0 },
+          sf_t: { value: globals.freqTex, },
+          viewport: { value: new THREE.Vector4(), },
+          rotation: { value: new THREE.Matrix4() },
+          intensity: { value: 0 },
+          drop: { value: 0 },
+        },
+        vertexShader: `
+        varying vec3 pp;
+        varying vec2 p;
+
+        void main() {
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
+            p = uv*2.-1.;
+            pp = (vec4(cameraPosition, 1.) + -(modelMatrix * vec4(0, 0, 0, 1.))).xyz;
+        }
+              `,
+        fragmentShader: `
+          uniform vec4 viewport;
+          uniform float t;
+          uniform float spinny;
+          uniform float intensity;
+          uniform float drop;
+          uniform mat4 modelViewMatrix;
+          uniform mat4 projectionMatrix;
+          uniform mat4 rotation;
+          uniform sampler2D sf_t;
+          varying vec3 pp;
+          varying vec2 p;
+
+          const float PI = asin(1.0) * 2.;
+
+          void main() {
+            float bri = pow(clamp(0.8-mod(t-distance(p.xy, vec2(0)), 5.), 0., 1.), 2.); 
+            // bri = pow(clamp(1.-abs(0.5 - mod(distance(p.xy, vec2(0)), 1.) * 4.), 0., 1.) + t, 1.), 10.); 
+            gl_FragColor = vec4(1, 0, 1, 1) * bri;
+            gl_FragColor *= 1.-pow(distance(p.xy, vec2(0)), 5.);
+            gl_FragColor *= intensity;
+          }
+              `,
+      }));
+    this.bgMesh.position.z -= 1.0;
+    this.mesh.add(this.bgMesh);
+
+    this.bgMesh.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+      material.uniforms.t.value = this.now();
+    }
 
     const light = new THREE.PointLight(0xff00ff, 10);
     this.light = light;
@@ -297,7 +357,7 @@ export default class CubeV4 {
     window.top.cubeMesh = this.mesh;
   }
   now() {
-    return (Date.now()/1000) % (1 << 15) - (1 << 14);
+    return (Date.now()/1000) % (1 << 15);
   }
   update(camera, renderer) {
     const dropDuration = 10;
@@ -309,9 +369,9 @@ export default class CubeV4 {
       const a = Math.PI*(k*x-1.0);
         return Math.sin(a)/a;
     };
-    const fallAmt = 1;//(Math.cos((1.-Math.pow(1-dropAmt, 4.)) * Math.PI * 4)+0.2) * Math.pow(1-dropAmt, 4.);
+    const fallAmt = this.globals.knobs ? this.globals.knobs['nye.drop'] : 0;//1.-(this.now() % 5) / 5;//(Math.cos((1.-Math.pow(1-dropAmt, 4.)) * Math.PI * 4)+0.2) * Math.pow(1-dropAmt, 4.);
 
-    this.mesh.position.y = 55;//500 * fallAmt + 50;//50 + (Math.pow((Math.sin(this.now())/2.+.5), 10.)) * 100.;
+    this.mesh.position.y = 2000 * (1.-fallAmt) + 30;//50 + (Math.pow((Math.sin(this.now())/2.+.5), 10.)) * 100.;
     // this.mesh.scale.y = 0.5 + 0.5 * (1.-Math.pow(1.-(Math.sin(this.now())/2.+.5), 10.));
 
     // this.analyser.getByteFrequencyData(this.freqData);
@@ -325,6 +385,17 @@ export default class CubeV4 {
 
     // this.dataTex.needsUpdate = true;
     this.mesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+    this.bgMesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+
+    const { knobs } = this.globals;
+    if (knobs) {
+      this.mesh.material.uniforms.intensity.value = knobs['nye.intensity'] || 0;
+      this.mesh.material.uniforms.drop.value = knobs['nye.drop'] || 0;
+      this.bgMesh.material.uniforms.intensity.value = knobs['nye.intensity'] || 0;
+      this.bgMesh.material.uniforms.drop.value = knobs['nye.drop'] || 0;
+      this.bgMesh.lookAt(camera.getWorldPosition(new THREE.Vector3()));
+    }
+    this.mesh.material.uniforms.spinny.value = this.spinny;
   }
   dispose() {
   }

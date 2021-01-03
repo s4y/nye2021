@@ -190,10 +190,10 @@ const materialProto =  new THREE.ShaderMaterial( {
       vec2 yeet2 = mod(vUv*1.+vec2(0.37, 0.), 1.);
       float freq = sf(((sin((yeet2.y+yeet2.x)*PI*1.))/2.+.5)/4.);
       // freq = 0.;
-      gl_FragColor += hsv(0.8 + t * 0.001 + freq * 0.8, 1., 1.) * pow(max(yeet2.x, yeet2.y), 50. - 20. * freq) * glowAmt;
+      gl_FragColor += hsv(0.8 + t * 0.001 + freq * 0.8, 1., 1.) * pow(max(yeet2.x, yeet2.y), 50. - (50.*glowAmt) * freq) * glowAmt;
 
-      vec3 grid = abs(fract(vert * 5. - 0.5) - 0.5) / fwidth(vert * 5.);
-      float line = min(min(grid.x, grid.y), grid.z);
+      vec3 grid = abs(fract(rp / 10. - 0.5) - 0.5) / fwidth(rp / 10.);
+      float line = clamp(min(min(grid.x, grid.y), grid.z), 0., 1.);
       gl_FragColor += vec4(clamp(1.-line, 0., 1.)) * gridAmt;
 
       vec4 diffuseColor = vec4( diffuse, opacity );
@@ -273,6 +273,15 @@ export default class GLTF {
       this.cubelight.rotation.y += 0.005;
       this.cubelight.rotation.x += 0.004;
       this.cubelight.material.emissive.setHSL(0.15, .9, .8 - Math.pow(this.globals.freqData[1] / 255, 4.) * 0.5);
+    }
+
+    const { knobs } = this.globals;
+    if (knobs) {
+      this.material.uniforms.glowAmt.value = knobs['nye.glow'] || 0;
+      this.material.uniforms.rippleAmt.value = knobs['nye.ripple'] || 0;
+    this.material.uniforms.houseLightsAmt.value = knobs['nye.houseLights'] || 0;
+    this.material.uniforms.accentLightsAmt.value = knobs['nye.accentLights'] || 0;
+    this.material.uniforms.gridAmt.value = knobs['nye.grid'] || 0;
     }
   }
   // destroy() {
