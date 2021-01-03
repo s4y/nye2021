@@ -73,6 +73,9 @@ Service.get('docent', docent => {});
 const prepSplash = () => {
   const doc = splashFrame.contentDocument;
 
+  if (sessionStorage.softBanned)
+    return;
+
   const connDetails = doc.getElementById('conndetails');
   const goLink = doc.createElement('a');
   goLink.style.fontSize = '1.2em';
@@ -85,7 +88,7 @@ const prepSplash = () => {
   splashFrame.offsetWidth;
   splashFrame.style.opacity = '1';
 
-  goLink.addEventListener('mousedown', e => {
+  goLink.addEventListener('click', e => {
     e.preventDefault();
     sessionStorage.inParty = true;
 

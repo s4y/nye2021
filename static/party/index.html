@@ -312,8 +312,7 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: false,
-    antialias: true,
-    powerPreference: 'low-power',
+    powerPreference: 'high-performance',
   });
   renderer.setClearColor(new THREE.Color().setHSL(0.5, 0.7, 0.01), 1);
   renderer.physicallyCorrectLights = true;
@@ -363,7 +362,6 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
     playerRenderer = new THREE.WebGLRenderer({
       canvas: playerCanvas,
       alpha: true,
-      antialias: false,
       powerPreference: 'high-performance',
     });
     playerRenderer.setClearColor(renderer.clearColor);
@@ -809,15 +807,16 @@ const buildGlRoom = (canvas, playerCanvas, config) => {
 
   Service.get('knobs', knobs => {
     knobs.observe('posAudio.refDistance', refDistance => {
-      posAudioParams.refDistance = refDistance;
+      posAudioParams.refDistance = refDistance * 50;
       for (const k in guests)
-        guests[k].posSound.setRefDistance(refDistance * 50);
+        if (guests[k].posSound) guests[k].posSound.setRefDistance(posAudioParams.refDistance);
     }, 1);
     knobs.observe('posAudio.rolloffFactor', rolloffFactor => {
-      posAudioParams.rolloffFactor = rolloffFactor;
+      posAudioParams.rolloffFactor = rolloffFactor * 10;
       for (const k in guests)
-        guests[k].posSound.setRolloffFactor(rolloffFactor * 10);
+        if (guests[k].posSound) guests[k].posSound.setRolloffFactor(posAudioParams.rolloffFactor);
     }, 1);
+    worldGlobals.knobs = knobs.knobs;
   });
 
   resize();
@@ -939,6 +938,20 @@ const start = () => {
         Service.get('userMedia', um => {
           userMedia = um;
           userMedia.start();
+
+          // services are so bad right now please restore my sanity
+          Service.get('knobs', knobs => {
+            knobs.observe('perf.tickleUserMedia', on => {
+              um.debugRestart();
+            }, false);
+            knobs.observe('perf.requiredVideoMute', on => {
+              document.getElementById('glPlayerView').style.display = on ? 'none' : '';
+              um.setRequiredVideoMute(on);
+            }, false);
+            knobs.observe('perf.requiredAudioMute', on => {
+              um.setRequiredAudioMute(on);
+            }, false);
+          });
         });
 
         window.top.addEventListener('keydown', e => {
